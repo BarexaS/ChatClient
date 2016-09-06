@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Scanner;
 
@@ -31,7 +30,9 @@ class GetThread extends Thread {
         try {
             while (!isInterrupted()) {
                 gettingPubMessage(currentRoom);
+                Thread.sleep(100);
                 gettingPrvtMessage(user);
+                Thread.sleep(100);
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -40,7 +41,7 @@ class GetThread extends Thread {
     }
 
     private void gettingPrvtMessage(String user) throws IOException {
-        URL url = new URL("http://localhost:8080/privateMess?from="+k+"&user=" + user);
+        URL url = new URL("http://localhost:8080/privateMess?from=" + k + "&user=" + user);
         HttpURLConnection http = (HttpURLConnection) url.openConnection();
         http.setRequestMethod("GET");
         try (InputStream is = http.getInputStream()) {
@@ -84,72 +85,72 @@ class GetThread extends Thread {
 
 
 public class Main {
+    static boolean session = false;
+    static Client clt = new Client(null, null);
+    static String roomName = "public";
+    static Scanner scanner = new Scanner(System.in);
+
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        Client clt = new Client(null, null);
-        String roomName = "public";
         try {
-            clt = loginProcess(scanner, clt);
-
-            GetThread th = new GetThread(clt.getLogin(), roomName);
-            th.setDaemon(true);
-            th.start();
-
-            System.out.println("Chat commands : ");
-            System.out.println("To check somebody status - type : /status login");
-            System.out.println("To wisper somebody - type : /w nickname message");
-            System.out.println("To see all chat members - type : /list");
-            System.out.println("To change chat-room - type : /switch RoomName");
-            System.out.println("To exit chat - type : /exit");
-
-            while (true) {
-                String text = scanner.nextLine();
-                if (text.isEmpty())
-                    break;
-                if (text.charAt(0)=='/') {
-                    if (text.substring(0, 2).equalsIgnoreCase("/w")) {
-                        sendPrivateMessage(clt, text);
-                        continue;
-                    }
-                    if (text.substring(0, 5).equalsIgnoreCase("/list")) {
-                        getClientList();
-                        continue;
-                    }
-                    if (text.substring(0, 5).equalsIgnoreCase("/exit")) {
-                        exitFromChat(clt.getLogin());
-                        break;
-                    }
-                    if (text.substring(0, 7).equalsIgnoreCase("/switch")) {
-                        if (changeRoom(text.split(" ")[1])) {
-                            roomName = text.split(" ")[1];
-                            th.changeRoom(roomName);
-                            System.out.println("Room created!");
-                        } else {
-                            roomName = text.split(" ")[1];
-                            th.changeRoom(roomName);
-                            System.out.println("Nice to see u again!");
-                        }
-                        continue;
-                    }
-                    if (text.substring(0, 7).equalsIgnoreCase("/status")) {
-                        String nickname = text.split(" ")[1];
-                        boolean result = checkStatus(nickname);
-                        if (result) {
-                            System.out.println(nickname + " - online");
-                        } else {
-                            System.out.println(nickname + " - offline");
-                        }
-                        continue;
-                    }
-
-                }
-                sendPublicMessage(clt, text, roomName);
-            }
-
+            loginProcess(scanner, clt);
+            exitFromChat(clt.getLogin());
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
             scanner.close();
+        }
+    }
+
+    private static void chatProcess(Scanner scanner, Client clt, String roomName, GetThread th) throws IOException {
+        System.out.println("Chat commands : ");
+        System.out.println("To check somebody status - type : /status login");
+        System.out.println("To wisper somebody - type : /w nickname message");
+        System.out.println("To see all chat members - type : /list");
+        System.out.println("To change chat-room - type : /switch RoomName");
+        System.out.println("To exit chat - type : /exit");
+
+        while (true) {
+            String text = scanner.nextLine();
+            if (text.isEmpty())
+                break;
+            if (text.charAt(0) == '/') {
+                if (text.substring(0, 2).equalsIgnoreCase("/w")) {
+                    sendPrivateMessage(clt, text);
+                    continue;
+                }
+                if (text.substring(0, 5).equalsIgnoreCase("/list")) {
+                    getClientList();
+                    continue;
+                }
+                if (text.substring(0, 5).equalsIgnoreCase("/exit")) {
+                    exitFromChat(clt.getLogin());
+                    break;
+                }
+                if (text.substring(0, 7).equalsIgnoreCase("/switch")) {
+                    if (changeRoom(text.split(" ")[1])) {
+                        roomName = text.split(" ")[1];
+                        th.changeRoom(roomName);
+                        System.out.println("Room created!");
+                    } else {
+                        roomName = text.split(" ")[1];
+                        th.changeRoom(roomName);
+                        System.out.println("Nice to see u again!");
+                    }
+                    continue;
+                }
+                if (text.substring(0, 7).equalsIgnoreCase("/status")) {
+                    String nickname = text.split(" ")[1];
+                    boolean result = checkStatus(nickname);
+                    if (result) {
+                        System.out.println(nickname + " - online");
+                    } else {
+                        System.out.println(nickname + " - offline");
+                    }
+                    continue;
+                }
+
+            }
+            sendPublicMessage(clt, text, roomName);
         }
     }
 
@@ -173,6 +174,7 @@ public class Main {
         URL url = new URL("http://localhost:8080/exit?login=" + login);
         HttpURLConnection http = (HttpURLConnection) url.openConnection();
         http.connect();
+        session = false;
         http.disconnect();
     }
 
@@ -202,9 +204,10 @@ public class Main {
         m.setText(text.substring(text.indexOf(messFor) + messFor.length()));
         m.setFrom(clt.getLogin());
         try {
-            int res = m.send("http://localhost:8080/privateMess");
+            int res = m.send("http://localhost:8080/privateMess", session);
             if (res != 200) {
                 System.out.println("HTTP error: " + res);
+                loginProcess(scanner, clt);
             }
         } catch (IOException ex) {
             System.out.println("Error: " + ex.getMessage());
@@ -218,10 +221,11 @@ public class Main {
         m.setRoomName(roomName);
 
         try {
-            int res = m.send("http://localhost:8080/add");
+            int res = m.send("http://localhost:8080/add", session);
 
             if (res != 200) {
                 System.out.println("HTTP error: " + res);
+                loginProcess(scanner, clt);
             }
         } catch (IOException ex) {
             System.out.println("Error: " + ex.getMessage());
@@ -232,11 +236,16 @@ public class Main {
         try {
             URL url = new URL("http://localhost:8080/getList");
             HttpURLConnection http = (HttpURLConnection) url.openConnection();
+            http.setRequestProperty("Cookie", "Session=" + session);
             try (InputStream is = http.getInputStream()) {
                 byte[] buf = new byte[is.available()];
                 is.read(buf);
                 String logResult = new String(buf);
-                System.out.println(logResult);
+                if ("Please login".equalsIgnoreCase(logResult)){
+                    loginProcess(scanner,clt);
+                } else {
+                    System.out.println(logResult);
+                }
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -244,8 +253,8 @@ public class Main {
         }
     }
 
-    private static Client loginProcess(Scanner scanner, Client clt) throws IOException {
-        while (true) {
+    private static void loginProcess(Scanner scanner, Client clt) throws IOException {
+        while (session == false) {
             System.out.println("Enter login: ");
             String login = scanner.nextLine();
 
@@ -255,10 +264,22 @@ public class Main {
 //                  Отсылаем логин и пароль для проверки
             HttpURLConnection http = sendLogAndPass(login, pass);
 
+            String headerName = null;
+
 //                Вычитываем результат логина
             try (InputStream is = http.getInputStream()) {
                 byte[] buf = new byte[is.available()];
                 is.read(buf);
+
+                for (int i = 1; (headerName = http.getHeaderFieldKey(i)) != null; i++) {
+                    if (headerName.equals("Set-Cookie")) {
+                        String cookie = http.getHeaderField(i);
+                        if (cookie.split("=")[1].equals("true")) {
+                            session = true;
+                        }
+                    }
+                }
+
                 String logResult = new String(buf);
                 System.out.println(logResult.split("\n")[0]);
                 switch (logResult.split("\n")[0]) {
@@ -284,11 +305,16 @@ public class Main {
                         break;
                     }
                 }
-                http.disconnect();
-                return clt;
             }
+            http.disconnect();
         }
+        GetThread th = new GetThread(clt.getLogin(), roomName);
+        th.setDaemon(true);
+        th.start();
+
+        chatProcess(scanner, clt, roomName, th);
     }
+
 
     private static Client regClient(String login, String pass) throws IOException {
         Client clt = new Client(login, pass);
